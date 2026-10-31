@@ -1,0 +1,66 @@
+# Runtime data and account state
+/data/
+/logs/
+/run/
+/snapshots/
+/reports/
+*.sqlite
+*.sqlite3
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Game client, runtime and extracted resources
+/Client/
+/runtime/
+/assets/
+/build-source/
+/research/
+
+# Captured or generated fixtures
+stateful_server/fixtures/*
+!stateful_server/fixtures/README.md
+offline/fixtures/
+offline/__pycache__/
+stateful_server/**/__pycache__/
+stateful_server/tests/masterdata/
+
+# Local configuration and secrets
+.env
+.env.*
+*.pfx
+*.p12
+*.pem
+*.key
+cookies.txt
+config/private-server.json
+config/trial-player.txt
+
+# Logs, captures and archives
+*.log
+*.tmp
+*.before
+*.bak
+*.zip
+*.7z
+*.rar
+*.tar
+*.gz
+*.usm
+*.bundle
+*.body
+
+# Python and editor output
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# OS/editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

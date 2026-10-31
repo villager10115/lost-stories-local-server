@@ -1,0 +1,223 @@
+"""Deploy the KMF development, dismantle and storage release."""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import socket
+
+
+SOURCE_FILES = (
+    ("offline/deploy_kmf_management.py",
+     "app/offline/deploy_kmf_management.py"),
+    ("offline/new_account_page.py", "app/offline/new_account_page.py"),
+    ("offline/preserved_pages.py", "app/offline/preserved_pages.py"),
+    ("offline/server.py", "app/offline/server.py"),
+    ("offline/test_local_kmf_lifecycle.js",
+     "app/offline/test_local_kmf_lifecycle.js"),
+    ("offline/test_kmf_management_render.cjs",
+     "app/offline/test_kmf_management_render.cjs"),
+    ("offline/test_local_unavailable_links.js",
+     "app/offline/test_local_unavailable_links.js"),
+    ("PROGRESS.md", "PROGRESS.md"),
+    ("stateful_server/cgls/app.py", "app/stateful_server/cgls/app.py"),
+    ("stateful_server/cgls/db.py", "app/stateful_server/cgls/db.py"),
+    ("stateful_server/cgls/kmf_color.py",
+     "app/stateful_server/cgls/kmf_color.py"),
+    ("stateful_server/cgls/kmf_management.py",
+     "app/stateful_server/cgls/kmf_management.py"),
+    ("stateful_server/cgls/kmf_management_models.py",
+     "app/stateful_server/cgls/kmf_management_models.py"),
+    ("stateful_server/tests/test_kmf_management.py",
+     "app/stateful_server/tests/test_kmf_management.py"),
+    ("KMF_MANAGEMENT_20261031.md", "KMF_MANAGEMENT_20261031.md"),
+    ("KMF_MANAGEMENT_20261031.md",
+     "reports/KMF_MANAGEMENT_20261031.md"),
+)
+
+WEB_FILES = (
+    "web/js/local/LocalKmfLifecyclePage.js",
+    "web/js/local/LocalUnavailableLinks.js",
+    "web/js/kmf/KmfDevelopment.js",
+    "web/js/kmf/KmfDismantle.js",
+    "web/js/carrying/CarryingTop.js",
+)
+
+FINAL_FILES = (
+    ("offline/deploy_kmf_management.py",
+     "app/offline/deploy_kmf_management.py"),
+    ("offline/test_kmf_management_render.cjs",
+     "app/offline/test_kmf_management_render.cjs"),
+    ("stateful_server/cgls/kmf_management.py",
+     "app/stateful_server/cgls/kmf_management.py"),
+    ("PROGRESS.md", "PROGRESS.md"),
+    ("KMF_MANAGEMENT_20261031.md", "KMF_MANAGEMENT_20261031.md"),
+    ("KMF_MANAGEMENT_20261031.md",
+     "reports/KMF_MANAGEMENT_20261031.md"),
+)
+
+
+def digest(path):
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def record(relative, source):
+    return {
+        "path": relative,
+        "bytes": source.stat().st_size,
+        "sha256": digest(source),
+    }
+
+
+def collect_pairs(source, package):
+    pairs = {
+        package_name: source / source_name
+        for source_name, package_name in SOURCE_FILES
+    }
+    for relative in WEB_FILES:
+        src = source / "offline/web_overrides" / relative
+        pairs["app/offline/web_overrides/" + relative] = src
+        pairs["assets/static-preview/local_overrides/" + relative] = src
+    return pairs
+
+
+def ports_closed(package):
+    config = json.loads(
+        (package / "config/private-server.json").read_text("utf8"))
+    for key in ("pagePort", "statePort", "debugPort"):
+        with socket.socket() as sock:
+            sock.settimeout(0.5)
+            if sock.connect_ex(("127.0.0.1", config[key])) == 0:
+                return False, key
+    return True, None
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--source", type=Path, default=Path("D:/codegeass"))
+    parser.add_argument("--package", type=Path,
+                        default=Path("D:/LostStories_Japanese"))
+    parser.add_argument("--backup", type=Path, required=True)
+    parser.add_argument("--deploy", action="store_true")
+    parser.add_argument("--final", action="store_true")
+    args = parser.parse_args()
+    source = args.source.resolve()
+    package = args.package.resolve()
+    backup = args.backup.resolve()
+    manifest_path = package / "reports/files.json"
+    original_manifest = manifest_path.read_bytes()
+    manifest = json.loads(original_manifest)
+    index = {row["path"]: row for row in manifest["files"]}
+
+    closed, active_key = ports_closed(package)
+    if not closed:
+        raise RuntimeError("Local services are active on " + active_key)
+
+    pairs = (
+        {package_name: source / source_name
+         for source_name, package_name in FINAL_FILES}
+        if args.final else collect_pairs(source, package)
+    )
+    missing = [str(path) for path in pairs.values() if not path.is_file()]
+    if missing:
+        raise RuntimeError("Missing source file: " + missing[0])
+
+    planned = []
+    for relative, src in sorted(pairs.items()):
+        target = (package / relative).resolve()
+        if package not in target.parents:
+            raise RuntimeError("Target escaped package: " + relative)
+        old = index.get(relative)
+        desired = record(relative, src)
+        actual = digest(target) if target.exists() else None
+        if target.exists() and old and actual != old["sha256"] and \
+                actual != desired["sha256"]:
+            raise RuntimeError("Package changed since manifest: " + relative)
+        if actual != desired["sha256"]:
+            planned.append({
+                **desired,
+                "oldSha256": actual,
+                "source": str(src),
+                "target": str(target),
+            })
+
+    plan = {
+        "package": str(package),
+        "backup": str(backup),
+        "changes": [
+            {key: row[key]
+             for key in ("path", "bytes", "sha256", "oldSha256")}
+            for row in planned
+        ],
+        "formalDatabaseWrites": False,
+        "nativeAssemblyRewritten": False,
+        "gameLaunch": False,
+    }
+    plan_path = source / "snapshots/kmf-management-deployment-plan.json"
+    plan_path.write_text(
+        json.dumps(plan, indent=2), encoding="utf8")
+    if not args.deploy:
+        print(json.dumps({
+            "plannedWrites": len(planned),
+            "plan": str(plan_path),
+        }))
+        return
+
+    if backup.exists():
+        raise RuntimeError("Backup directory already exists")
+    backup.mkdir(parents=True)
+    (backup / "files.json.before").write_bytes(original_manifest)
+    for row in planned:
+        target = package / row["path"]
+        if not target.exists():
+            continue
+        saved = backup / "files" / row["path"]
+        saved.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(target, saved)
+
+    written = []
+    try:
+        for row in planned:
+            target = Path(row["target"])
+            target.parent.mkdir(parents=True, exist_ok=True)
+            temporary = target.with_name(target.name + ".kmf-tmp")
+            shutil.copy2(row["source"], temporary)
+            os.replace(temporary, target)
+            if digest(target) != row["sha256"]:
+                raise RuntimeError("Post-write hash mismatch: " + row["path"])
+            written.append(row)
+            index[row["path"]] = {
+                key: row[key] for key in ("path", "bytes", "sha256")
+            }
+        manifest["files"] = sorted(index.values(), key=lambda row: row["path"])
+        temporary = manifest_path.with_suffix(".kmf-tmp")
+        temporary.write_text(
+            json.dumps(manifest, indent=2), encoding="utf8")
+        os.replace(temporary, manifest_path)
+    except BaseException:
+        for row in reversed(written):
+            target = Path(row["target"])
+            if row["oldSha256"] is None:
+                if target.exists():
+                    target.unlink()
+            else:
+                saved = backup / "files" / row["path"]
+                shutil.copy2(saved, target)
+        manifest_path.write_bytes(original_manifest)
+        raise
+
+    plan["manifestEntries"] = len(index)
+    receipt = json.dumps(plan, indent=2)
+    (backup / "deployment.json").write_text(receipt, encoding="utf8")
+    (package / "reports/kmf-management-deployment.json").write_text(
+        receipt, encoding="utf8")
+    print(json.dumps({
+        "writes": len(written),
+        "manifestEntries": len(index),
+        "backup": str(backup),
+    }))
+
+
+if __name__ == "__main__":
+    main()

@@ -1,0 +1,16 @@
+* text=auto
+*.py text eol=lf
+*.js text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.ps1 text eol=lf
+*.cs text eol=lf
+*.exe binary
+*.dll binary
+*.webp binary
+*.png binary
+*.bundle binary
+*.usm binary
+*.awb binary
+*.acb binary
