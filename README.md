@@ -3,6 +3,25 @@
 A local-only persistence and protocol compatibility server for a preserved
 single-player client environment.
 
+## Download a ready-to-run clean client
+
+The public Release contains the complete client/runtime/resources in hosted
+parts because GitHub limits each release asset to 2 GB. The ZIP is built
+without any existing account or save database.
+
+Run this in PowerShell:
+
+```powershell
+irm https://raw.githubusercontent.com/villager10115/lost-stories-local-server/main/download-client.ps1 | iex
+```
+
+The script downloads all release parts, verifies SHA-256, joins them and
+extracts `LostStories_Japanese/` into the current directory. No GitHub
+account is required to download a public release.
+
+The repository below remains source-only; the ready-to-run package is stored
+as Release assets rather than normal Git objects.
+
 This repository contains independently written server code, integration
 tooling, tests and documentation. It does not contain the proprietary game
 client, game assets, extracted master data, official account data, cookies,
